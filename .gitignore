@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+
+# Datos de la minuta del equipo (contienen contenido interno y correos de terceros): no se publican
+supabase/seed/
