@@ -1,0 +1,40 @@
+name: Latido de Supabase
+
+# Evita que el plan gratuito de Supabase pause el proyecto por inactividad (1 semana).
+# Llama a public.keepalive(), una función de solo lectura que devuelve la hora (supabase/migrations/0002_keepalive.sql).
+# No lee ni modifica datos del equipo. Si falla, GitHub avisa por correo al dueño del repositorio.
+
+on:
+  schedule:
+    - cron: "17 13 * * 1,4" # lunes y jueves (UTC), con margen respecto del límite de 7 días
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/keepalive.yml"] # se prueba solo cada vez que se edita este archivo
+
+permissions:
+  contents: read
+  actions: write # solo para mantener activo este mismo workflow (ver último paso)
+
+jobs:
+  latido:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Llamar a la función keepalive
+        run: |
+          set -euo pipefail
+          URL=$(grep '^VITE_SUPABASE_URL=' .env.production | cut -d= -f2-)
+          KEY=$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | cut -d= -f2-)
+          curl -fsS --retry 3 --retry-delay 15 -X POST "$URL/rest/v1/rpc/keepalive" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}'
+          echo
+
+      # GitHub desactiva los workflows programados de repositorios públicos tras 60 días sin actividad.
+      # Volver a habilitarlo en cada ejecución evita que eso ocurra.
+      - name: Mantener activo este workflow
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow enable keepalive.yml

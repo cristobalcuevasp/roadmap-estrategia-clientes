@@ -64,7 +64,7 @@ Requiere Node 18 o superior.
 
 - La URL y la clave `sb_publishable_…` de `.env.production` son **públicas por diseño** (viajan dentro del sitio). El acceso real lo controlan las políticas RLS de `supabase/migrations/0001_schema.sql`.
 - **Nunca** pongas la clave `service_role` en este repositorio ni en el frontend.
-- `supabase/seed/` (la minuta cargada inicialmente) está en `.gitignore` porque contiene contenido interno y correos de terceros. Si algún día necesitas recrear la base, ejecuta primero `supabase/migrations/0001_schema.sql` y luego ese archivo en el *SQL Editor* de Supabase.
+- `supabase/seed/` (la minuta cargada inicialmente) está en `.gitignore` porque contiene contenido interno y correos de terceros. Si algún día necesitas recrear la base, ejecuta en el *SQL Editor* de Supabase, en este orden, `supabase/migrations/0001_schema.sql`, `supabase/migrations/0002_keepalive.sql` y luego ese archivo.
 
 ## Hosting alternativo
 
@@ -72,6 +72,6 @@ GitHub Pages desde un repositorio **privado** requiere un plan de pago de GitHub
 
 ## Limitaciones conocidas
 
-- Plan gratuito de Supabase: el proyecto se **pausa tras 7 días sin actividad** (se reactiva desde el panel) y **no incluye respaldos automáticos**. Con uso diario del equipo no debería pausarse; considera exportar los datos de vez en cuando o pasar al plan Pro.
+- Plan gratuito de Supabase: el proyecto se **pausa tras 7 días sin actividad** (se reactiva desde el panel) y **no incluye respaldos automáticos**. Con uso diario del equipo no debería pausarse, y además el workflow `.github/workflows/keepalive.yml` llama a `public.keepalive()` (función de solo lectura) los lunes y jueves para cubrir semanas sin uso, como las vacaciones. Si ese workflow falla, GitHub avisa por correo (señal de que el proyecto se pausó o cambió algo). Considera exportar los datos de vez en cuando o pasar al plan Pro.
 - Si alguien olvida su contraseña no hay recuperación por correo (por el mismo motivo del paso 3). Si sigue conectada puede cambiarla desde el menú de su avatar; si no, elimina su usuario en *Authentication → Users* (en el panel de Supabase) y pídele que se registre de nuevo con el mismo correo: su ficha y sus tareas se mantienen y se vinculan solas.
 - Aún no incluye: tabla propia de proyectos, vista calendario, edición masiva, exportación a Excel ni alertas automáticas de vencimiento.
