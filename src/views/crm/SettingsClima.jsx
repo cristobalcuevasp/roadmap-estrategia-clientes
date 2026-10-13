@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BANDAS, normalizeCortes, bandRangeLabel } from "../../lib/crm/weather";
+import { BANDAS, normalizeCortes, bandRangeLabel, creditoClima, proveedoresClima } from "../../lib/crm/weather";
 import { Field, inputCls, btnPrimary } from "./crmUi";
 
 const ESTADO_EJEC = { ok: "completa", parcial: "parcial (algunas comunas fallaron)", error: "con error", en_curso: "en curso" };
@@ -16,6 +16,8 @@ export function ClimaTab({ crm, c }) {
   const cortesOk = JSON.stringify(normalizeCortes(cortesNum)) === JSON.stringify(cortesNum);
   const run = crm.ultimaEjecucion;
   const hayDatos = crm.clima.length > 0;
+  const fuentes = [...crm.clima.map((r) => r.fuente), run?.fuente];
+  const proveedores = proveedoresClima(fuentes);
 
   return (
     <div className="space-y-4">
@@ -25,6 +27,9 @@ export function ClimaTab({ crm, c }) {
         <p>{run ? `Última ejecución: ${new Date(run.fin || run.inicio).toLocaleString("es-CL")} · ${ESTADO_EJEC[run.estado] || run.estado}${run.fuente ? ` · fuente ${run.fuente}` : ""}${run.comunas_ok || run.comunas_error ? ` · ${run.comunas_ok} comunas ok, ${run.comunas_error} con error` : ""}.` : "No se ha registrado ninguna ejecución."}</p>
         {run?.detalle && <p className={c.textFaint}>Detalle: {run.detalle}</p>}
         <p className={c.textFaint}>El dato es la probabilidad de precipitación diaria que entrega la fuente para cada comuna con tiendas abiertas; por región se promedia ponderando por tiendas abiertas. Más allá del horizonte de la fuente no se muestra nada.</p>
+        <p className={c.textFaint}>Proveedores disponibles: OpenWeather One Call 3.0 (una consulta al día) y Google Maps Platform Weather API (cada ~12 horas). Quien administra Supabase elige cuál se usa con el secreto CLIMA_PROVEEDOR de la función («openweather» o «google») y carga la clave de ese proveedor como secreto de la función; las claves nunca se guardan en la app ni en la base de datos.</p>
+        {proveedores.includes("google") && <p className={c.textFaint}>Con Google, sus términos obligan a borrar el pronóstico a las 24 horas: el sistema lo renueva cada ~12 horas y elimina solo lo anterior, así que no se conservan pronósticos de días pasados. La probabilidad de cada día es la mayor entre el tramo diurno (07:00–19:00) y el nocturno (19:00–07:00).</p>}
+        {proveedores.length > 0 && <p className={c.textFaint}>{creditoClima(fuentes)}</p>}
       </div>
 
       <div>

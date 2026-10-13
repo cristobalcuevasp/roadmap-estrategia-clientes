@@ -296,7 +296,6 @@ export function useCrm({ userId, showToast }) {
     const clean = { ...patch };
     if ("nombre" in clean) clean.nombre = clean.nombre.trim();
     if ("iniciales" in clean) clean.iniciales = clean.iniciales.trim();
-    if ("email" in clean) clean.email = (clean.email || "").trim() || null;
     const q = id
       ? supabase.from("crm_responsables").update(clean).eq("id", id)
       : supabase.from("crm_responsables").insert({ orden: responsables.reduce((m, r) => Math.max(m, r.orden || 0), 0) + 1, ...clean });

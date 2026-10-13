@@ -36,7 +36,7 @@ export function EstadoBadge({ estado, dark }) {
 export function RespDot({ resp, size = "sm" }) {
   const dims = size === "md" ? "w-6 h-6 text-xs" : "w-5 h-5 text-[10px] leading-none";
   if (!resp) return <span title="Sin responsable" className={`${dims} rounded-full bg-slate-400/40 text-slate-500 flex items-center justify-center font-semibold shrink-0`}>?</span>;
-  return <span title={`${resp.nombre}${resp.email ? ` · ${resp.email}` : ""}`} className={`${dims} rounded-full ${COLOR_CLASS[resp.color] || COLOR_CLASS.slate} text-white flex items-center justify-center font-semibold shrink-0`}>{resp.iniciales}</span>;
+  return <span title={resp.nombre} className={`${dims} rounded-full ${COLOR_CLASS[resp.color] || COLOR_CLASS.slate} text-white flex items-center justify-center font-semibold shrink-0`}>{resp.iniciales}</span>;
 }
 
 /** Panel lateral deslizante (misma estética que el panel de tareas). */

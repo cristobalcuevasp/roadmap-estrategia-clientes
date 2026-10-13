@@ -59,34 +59,50 @@ Calendario colaborativo (mes y semana) para planificar los mailings de Marketing
 
 ### Actualización automática del clima
 
-La migración `0004_clima_automatico.sql` programa (pg_cron) dos llamadas diarias, a las 09:30 y 12:30 UTC, a la Edge Function `crm-clima` (`supabase/functions/crm-clima/`). Si la primera del día sale bien, la segunda no hace nada. Cada ejecución queda registrada en `crm_clima_ejecuciones` y se ve en *Configuración → Clima*.
+Las migraciones `0004_clima_automatico.sql` y `0005_clima_google.sql` programan (pg_cron) tres llamadas diarias (09:30, 12:30 y 21:30 UTC) a la Edge Function `crm-clima` (`supabase/functions/crm-clima/`) y una limpieza horaria. Cada ejecución queda registrada en `crm_clima_ejecuciones` y se ve en *Configuración → Clima*.
 
-Fuente: **OpenWeather One Call 3.0** (el calendario muestra «Weather data © OpenWeather»). Son ~66 consultas por día; el plan gratuito de One Call permite 1.000 al día, pero **requiere activar la suscripción «One Call by Call» en la cuenta de OpenWeather**.
+La función admite **dos proveedores**; se elige con el secreto `CLIMA_PROVEEDOR` de la función (`openweather`, por defecto, o `google`):
+
+| | OpenWeather One Call 3.0 | Google Maps Platform Weather API |
+|---|---|---|
+| Secreto con la clave | `OPENWEATHER_API_KEY` | `GOOGLE_WEATHER_API_KEY` |
+| Consultas | ~66 al día (1 por comuna con tiendas abiertas), una sola corrida buena por día | ~66 por corrida, cada ~12 horas (≈132 al día) |
+| Costo | 1.000 consultas diarias gratis, pero exige la suscripción «One Call by Call» | Cuota gratuita mensual de Google (consultar la tarifa vigente); exige proyecto de Google Cloud con facturación activa |
+| Horizonte | ~8 días | hasta 10 días |
+| Probabilidad de lluvia | del día | la **mayor** entre el tramo diurno (07–19 h) y el nocturno (19–07 h) |
+| Guardado | se conserva el historial de pronósticos | **se borra a las 24 horas** (condición de uso de Google); no hay pronósticos de días pasados |
+| Crédito en pantalla | «Weather data © OpenWeather.» | «Source: Includes weather data from Google.» |
+
+El crédito de cada proveedor se muestra solo cuando hay datos suyos en pantalla.
 
 **Para activarla (una sola vez):**
-1. Crear la cuenta en OpenWeather y suscribirse a *One Call by Call* (fijar el límite diario en 1.000 para no pasar al cobro).
-2. En Supabase: *Edge Functions → Secrets → Add new secret* con el nombre `OPENWEATHER_API_KEY` y la clave como valor. **La clave no va en este repositorio, ni en el frontend, ni se pega en conversaciones.**
+1. Elegir proveedor y crear la clave:
+   - *OpenWeather:* crear la cuenta y suscribirse a *One Call by Call* (fijar el límite diario en 1.000 para no pasar al cobro).
+   - *Google:* crear un proyecto en Google Cloud con facturación, habilitar la **Weather API**, crear una clave y **restringirla a esa API**; fijar una cuota diaria para evitar cobros inesperados.
+2. En Supabase: *Edge Functions → Secrets → Add new secret* con el nombre de la clave (`OPENWEATHER_API_KEY` o `GOOGLE_WEATHER_API_KEY`) y la clave como valor. Para usar Google, agregar también `CLIMA_PROVEEDOR` = `google`. **Las claves no van en este repositorio, ni en el frontend, ni se pegan en conversaciones.**
 3. Esperar a la siguiente ejecución, o pedir una manual (ver abajo).
 
-Seguridad de la función: se despliega sin verificación de JWT y exige el encabezado `x-cron-secret`, que se compara con un secreto generado dentro de Postgres y guardado en Vault (`crm_clima_cron_secret`). Sin ese secreto responde 401 y no consulta a OpenWeather. Mientras falte la clave, la función solo deja registrado el aviso de que falta.
+Seguridad de la función: se despliega sin verificación de JWT y exige el encabezado `x-cron-secret`, que se compara con un secreto generado dentro de Postgres y guardado en Vault (`crm_clima_cron_secret`). Sin ese secreto responde 401 y no consulta a ningún proveedor. Mientras falte la clave, la función solo deja registrado el aviso de que falta.
 
-Ejecución manual (SQL Editor de Supabase): `select private.crm_clima_disparar();` y luego `select * from public.crm_clima_ejecuciones order by inicio desc limit 3;`. Para forzar la actualización aunque hoy ya haya salido bien, llamar a la función con el cuerpo `{"force": true}`.
+Cumplimiento con Google: tras cada corrida buena la función borra el pronóstico de Google anterior, y la tarea `crm-clima-purga` (cada hora) elimina todo pronóstico de Google con más de 23 horas aunque una corrida falle. Con OpenWeather esa limpieza no toca nada.
 
-El pronóstico de cada día se guarda por fecha de consulta (`crm_clima_pronostico`), unas 500 filas diarias (~25 MB al año).
+Ejecución manual (SQL Editor de Supabase): `select private.crm_clima_disparar();` y luego `select * from public.crm_clima_ejecuciones order by inicio desc limit 3;`. Para forzar la actualización aunque ya haya salido bien, llamar a la función con el cuerpo `{"force": true}`.
 
-### Correo (pendiente)
+Con OpenWeather, el pronóstico de cada día se guarda por fecha de consulta (`crm_clima_pronostico`), unas 500 filas diarias (~25 MB al año).
 
-Los avisos por correo de los comentarios asignados **no están activos**: requieren que TI verifique un dominio de envío (por ejemplo, en Resend). Mientras tanto, la persona asignada recibe el aviso dentro de la app (campana) y el correo del responsable queda guardado en el comentario.
+### Avisos de comentarios
+
+Los comentarios semanales asignados a alguien con cuenta vinculada generan un aviso **dentro de la app** (campana). El envío de correos quedó **fuera del alcance** por decisión del equipo: la interfaz no pide ni muestra correos de responsables. Las columnas `crm_responsables.email` y `crm_comentarios_semana.correo_responsable` y la tabla `crm_correos` siguen en la base sin uso, por si algún día se retoma.
 
 ### Pruebas
 
 ```bash
-node tests/run.mjs        # lógica del módulo: calendario, días de pago, clima, CSV, análisis, parseo de OpenWeather
+node tests/run.mjs        # lógica del módulo: calendario, días de pago, clima, CSV, análisis, parseo de OpenWeather y de Google
 ```
 
 `supabase/tests/crm_rls_test.sql` es una prueba de base de datos (permisos, historial, avisos, seguridad del clima). Se ejecuta dentro de una transacción que siempre se revierte, así que no deja datos; el informe aparece en el mensaje de error (líneas `OK` / `FALLA`).
 
-Lo que **no** cubren las pruebas automáticas: el clima real de OpenWeather (hasta cargar la clave), el envío de correos, y el uso en un celular real. Se validan a mano.
+Lo que **no** cubren las pruebas automáticas: el clima real de OpenWeather o Google (hasta cargar una clave; las pruebas usan respuestas sintéticas con la forma documentada) y el uso en un celular real. Se validan a mano.
 
 ## Uso diario
 
@@ -110,7 +126,7 @@ Requiere Node 18 o superior.
 
 - La URL y la clave `sb_publishable_…` de `.env.production` son **públicas por diseño** (viajan dentro del sitio). El acceso real lo controlan las políticas RLS de `supabase/migrations/0001_schema.sql`.
 - **Nunca** pongas la clave `service_role` en este repositorio ni en el frontend.
-- `supabase/seed/` (la minuta cargada inicialmente) está en `.gitignore` porque contiene contenido interno y correos de terceros. Si algún día necesitas recrear la base, ejecuta en el *SQL Editor* de Supabase, en este orden, `supabase/migrations/0001_schema.sql`, `0002_keepalive.sql`, `0003_crm.sql`, `0004_clima_automatico.sql` y luego ese archivo.
+- `supabase/seed/` (la minuta cargada inicialmente) está en `.gitignore` porque contiene contenido interno y correos de terceros. Si algún día necesitas recrear la base, ejecuta en el *SQL Editor* de Supabase, en este orden, `supabase/migrations/0001_schema.sql`, `0002_keepalive.sql`, `0003_crm.sql`, `0004_clima_automatico.sql`, `0005_clima_google.sql` y luego ese archivo.
 
 ## Hosting alternativo
 

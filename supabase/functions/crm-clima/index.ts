@@ -1,15 +1,53 @@
-// Edge Function crm-clima: actualiza el pronóstico de lluvia por comuna (OpenWeather One Call).
+// Edge Function crm-clima: actualiza el pronóstico de lluvia por comuna.
 //
-// Quién la llama: pg_cron, dos veces al día, mediante private.crm_clima_disparar() (migración 0004).
+// Proveedores (secreto CLIMA_PROVEEDOR; por defecto "openweather"):
+//   • openweather → OpenWeather One Call 3.0, clave en el secreto OPENWEATHER_API_KEY.
+//   • google      → Google Maps Platform Weather API, clave en el secreto GOOGLE_WEATHER_API_KEY.
+//                   Por sus términos, el pronóstico se borra a las 24 horas (ver google.ts y la migración 0005).
+//
+// Quién la llama: pg_cron, tres veces al día, mediante private.crm_clima_disparar() (migraciones 0004 y 0005).
 // Seguridad: la función se despliega sin verificación de JWT y exige el encabezado x-cron-secret,
-// que se valida contra un secreto guardado en Vault (rpc crm_clima_verificar_secreto). La clave de
-// OpenWeather vive solo como secreto de la función (OPENWEATHER_API_KEY); nunca se escribe en el
-// repositorio, ni en la base de datos, ni en los registros.
+// que se valida contra un secreto guardado en Vault (rpc crm_clima_verificar_secreto). Las claves de los
+// proveedores viven solo como secretos de la función; nunca se escriben en el repositorio, ni en la base
+// de datos, ni en los registros.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   ErrorClima, FUENTE, errorPorEstado, estadoCorrida, filasDesdeRespuesta, hoySantiago, limpiar, urlOneCall,
   type FilaClima,
 } from "./openweather.ts";
+import { FUENTE_GOOGLE, errorGooglePorEstado, filasDesdeGoogle, urlGoogle } from "./google.ts";
+
+interface Proveedor {
+  id: "openweather" | "google";
+  fuente: string;
+  secreto: string; // nombre del secreto con la clave
+  url: (lat: number, lon: number, clave: string) => string;
+  errorPorEstado: (status: number) => ErrorClima;
+  filas: (payload: any, comunaId: number, hoy: string) => FilaClima[];
+  /** true si el proveedor exige borrar el pronóstico a las 24 horas */
+  borrarA24h: boolean;
+  /** Cuánto tiempo debe pasar desde la última corrida buena para volver a consultar. */
+  yaActualizado: (finUltimaOk: Date, ahora: Date) => boolean;
+}
+
+const PROVEEDORES: Record<string, Proveedor> = {
+  openweather: {
+    id: "openweather", fuente: FUENTE, secreto: "OPENWEATHER_API_KEY", borrarA24h: false,
+    url: (lat, lon, clave) => urlOneCall(lat, lon, clave),
+    errorPorEstado,
+    filas: (p, id, hoy) => filasDesdeRespuesta(p, id, hoy),
+    // Una vez por día calendario (en Santiago): las otras corridas del día no hacen nada.
+    yaActualizado: (fin, ahora) => hoySantiago(fin) === hoySantiago(ahora),
+  },
+  google: {
+    id: "google", fuente: FUENTE_GOOGLE, secreto: "GOOGLE_WEATHER_API_KEY", borrarA24h: true,
+    url: (lat, lon, clave) => urlGoogle(lat, lon, clave),
+    errorPorEstado: errorGooglePorEstado,
+    filas: (p, id, hoy) => filasDesdeGoogle(p, id, hoy),
+    // Cada ~12 horas, para que el dato guardado nunca llegue a las 24 horas.
+    yaActualizado: (fin, ahora) => ahora.getTime() - fin.getTime() < 10 * 3600_000,
+  },
+};
 
 const CONCURRENCIA = 6;
 const TIMEOUT_MS = 12_000;
@@ -20,7 +58,7 @@ const json = (cuerpo: unknown, status = 200) =>
 
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function consultar(comuna: { id: number; lat: number; lon: number }, clave: string, hoy: string): Promise<FilaClima[]> {
+async function consultar(prov: Proveedor, comuna: { id: number; lat: number; lon: number }, clave: string, hoy: string): Promise<FilaClima[]> {
   let ultimo: ErrorClima | null = null;
   for (let intento = 0; intento < 2; intento++) {
     if (intento > 0) await dormir(1500);
@@ -29,28 +67,28 @@ async function consultar(comuna: { id: number; lat: number; lon: number }, clave
       const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
       let resp: Response;
       try {
-        resp = await fetch(urlOneCall(Number(comuna.lat), Number(comuna.lon), clave), { signal: ctl.signal });
+        resp = await fetch(prov.url(Number(comuna.lat), Number(comuna.lon), clave), { signal: ctl.signal });
       } finally {
         clearTimeout(timer);
       }
       if (!resp.ok) {
-        const e = errorPorEstado(resp.status);
+        const e = prov.errorPorEstado(resp.status);
         if (e.fatal) throw e;
         ultimo = e;
         continue;
       }
-      return filasDesdeRespuesta(await resp.json(), comuna.id, hoy);
+      return prov.filas(await resp.json(), comuna.id, hoy);
     } catch (e) {
       if (e instanceof ErrorClima) {
         if (e.fatal) throw e;
         ultimo = e;
         if (!e.status) break; // respuesta mal formada: reintentar no ayuda
       } else {
-        ultimo = new ErrorClima("No se pudo consultar OpenWeather: " + limpiar((e as Error)?.message, clave));
+        ultimo = new ErrorClima("No se pudo consultar " + prov.fuente + ": " + limpiar((e as Error)?.message, clave));
       }
     }
   }
-  throw ultimo ?? new ErrorClima("Error desconocido al consultar OpenWeather.");
+  throw ultimo ?? new ErrorClima("Error desconocido al consultar " + prov.fuente + ".");
 }
 
 Deno.serve(async (req) => {
@@ -61,7 +99,7 @@ Deno.serve(async (req) => {
   if (!url || !serviceKey) return json({ error: "Falta configuración interna de Supabase" }, 500);
   const db = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // 1) Autenticación por secreto compartido (antes de gastar una sola consulta a OpenWeather).
+  // 1) Autenticación por secreto compartido (antes de gastar una sola consulta al proveedor).
   const secreto = req.headers.get("x-cron-secret") ?? "";
   const { data: autorizado, error: errAuth } = await db.rpc("crm_clima_verificar_secreto", { p_secreto: secreto });
   if (errAuth || autorizado !== true) return json({ error: "No autorizado" }, 401);
@@ -69,17 +107,23 @@ Deno.serve(async (req) => {
   let force = false;
   try { force = (await req.json())?.force === true; } catch { /* sin cuerpo */ }
 
-  const hoy = hoySantiago();
-  const clave = Deno.env.get("OPENWEATHER_API_KEY") ?? "";
-
+  const proveedorId = (Deno.env.get("CLIMA_PROVEEDOR") ?? "openweather").trim().toLowerCase();
+  const prov = PROVEEDORES[proveedorId];
   const registrar = (fila: Record<string, unknown>) => db.from("crm_clima_ejecuciones").insert(fila).select("id").single();
+  if (!prov) {
+    await registrar({ estado: "error", fin: new Date().toISOString(), fuente: proveedorId.slice(0, 40), detalle: "El secreto CLIMA_PROVEEDOR debe ser «openweather» o «google»." });
+    return json({ error: "Proveedor de clima no válido" }, 500);
+  }
+
+  const hoy = hoySantiago();
+  const clave = Deno.env.get(prov.secreto) ?? "";
 
   if (!clave) {
     await registrar({
-      estado: "error", fin: new Date().toISOString(), fuente: FUENTE,
-      detalle: "Falta el secreto OPENWEATHER_API_KEY. Cárgalo en Supabase → Edge Functions → Secrets.",
+      estado: "error", fin: new Date().toISOString(), fuente: prov.fuente,
+      detalle: `Falta el secreto ${prov.secreto}. Cárgalo en Supabase → Edge Functions → Secrets.`,
     });
-    return json({ error: "Falta el secreto OPENWEATHER_API_KEY" }, 500);
+    return json({ error: `Falta el secreto ${prov.secreto}` }, 500);
   }
 
   // 2) Evitar corridas duplicadas y repetir el trabajo si hoy ya salió bien.
@@ -89,12 +133,13 @@ Deno.serve(async (req) => {
   const { data: enCurso } = await db.from("crm_clima_ejecuciones").select("id").eq("estado", "en_curso").limit(1);
   if (enCurso && enCurso.length > 0) return json({ omitida: true, motivo: "Ya hay una actualización en curso" }, 409);
   if (!force) {
-    const { data: ultimas } = await db.from("crm_clima_ejecuciones").select("fin").eq("estado", "ok").order("fin", { ascending: false }).limit(1);
+    const { data: ultimas } = await db.from("crm_clima_ejecuciones").select("fin").eq("estado", "ok").eq("fuente", prov.fuente).order("fin", { ascending: false }).limit(1);
     const fin = ultimas?.[0]?.fin;
-    if (fin && hoySantiago(new Date(fin)) === hoy) return json({ omitida: true, motivo: "Hoy ya se actualizó correctamente" });
+    if (fin && prov.yaActualizado(new Date(fin), new Date())) return json({ omitida: true, motivo: "Ya se actualizó correctamente hace poco" });
   }
 
-  const { data: corrida, error: errCorrida } = await registrar({ estado: "en_curso", fuente: FUENTE });
+  const inicioCorrida = new Date().toISOString();
+  const { data: corrida, error: errCorrida } = await registrar({ estado: "en_curso", fuente: prov.fuente });
   if (errCorrida || !corrida) return json({ error: "No se pudo registrar la ejecución" }, 500);
 
   const terminar = async (estado: string, ok: number, error: number, detalle: string) => {
@@ -116,7 +161,7 @@ Deno.serve(async (req) => {
 
     // La primera comuna va sola: si la clave no sirve, se corta de inmediato sin gastar el resto.
     const [primera, ...resto] = comunas;
-    try { filas.push(...await consultar(primera, clave, hoy)); ok++; }
+    try { filas.push(...await consultar(prov, primera, clave, hoy)); ok++; }
     catch (e) {
       if (e instanceof ErrorClima && e.fatal) corte.error = e; else fallos.push(`${primera.nombre}: ${limpiar((e as Error).message, clave)}`);
     }
@@ -126,7 +171,7 @@ Deno.serve(async (req) => {
       const worker = async () => {
         while (!corte.error && i < resto.length) {
           const c = resto[i++];
-          try { filas.push(...await consultar(c, clave, hoy)); ok++; }
+          try { filas.push(...await consultar(prov, c, clave, hoy)); ok++; }
           catch (e) {
             if (e instanceof ErrorClima && e.fatal) { corte.error = e; return; }
             fallos.push(`${c.nombre}: ${limpiar((e as Error).message, clave)}`);
@@ -142,18 +187,27 @@ Deno.serve(async (req) => {
     }
 
     // 4) Guardar (reemplaza lo de hoy si se repite la corrida).
-    for (let k = 0; k < filas.length; k += 500) {
-      const { error } = await db.from("crm_clima_pronostico").upsert(filas.slice(k, k + 500), { onConflict: "comuna_id,fecha,obtenido_el" });
+    const ahoraIso = new Date().toISOString();
+    const filasConHora = filas.map((f) => ({ ...f, obtenido_en: ahoraIso }));
+    for (let k = 0; k < filasConHora.length; k += 500) {
+      const { error } = await db.from("crm_clima_pronostico").upsert(filasConHora.slice(k, k + 500), { onConflict: "comuna_id,fecha,obtenido_el" });
       if (error) {
         await terminar("error", 0, comunas.length, "No se pudo guardar el pronóstico: " + error.message);
         return json({ error: "No se pudo guardar el pronóstico" }, 500);
       }
     }
 
+    // 5) Proveedores con límite de 24 horas (Google): se borra todo lo guardado antes de esta corrida.
+    //    Las comunas que fallaron hoy quedan sin dato en vez de mostrar uno vencido.
+    if (prov.borrarA24h) {
+      const { error } = await db.from("crm_clima_pronostico").delete().like("fuente", "Google%").lt("obtenido_en", inicioCorrida);
+      if (error) fallos.push("No se pudo borrar el pronóstico anterior: " + limpiar(error.message, clave));
+    }
+
     const errores = comunas.length - ok;
     const estado = estadoCorrida(ok, errores);
     await terminar(estado, ok, errores, fallos.slice(0, 5).join(" | "));
-    return json({ estado, comunas_ok: ok, comunas_error: errores, filas: filas.length, fecha: hoy });
+    return json({ proveedor: prov.id, estado, comunas_ok: ok, comunas_error: errores, filas: filas.length, fecha: hoy });
   } catch (e) {
     await terminar("error", 0, 0, "Error inesperado: " + limpiar((e as Error)?.message, clave));
     return json({ error: "Error inesperado" }, 500);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Flag, CircleDollarSign, CloudRain, Plus, MessageSquare, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { fmtLong, mondayOf, fmtDMY, isoWeek } from "../../lib/crm/calendar";
-import { communeDetail, BANDAS, bandIndex, bandRangeLabel, horizonKind, HORIZON_LABEL, rainSuggestion } from "../../lib/crm/weather";
+import { communeDetail, BANDAS, bandIndex, bandRangeLabel, horizonKind, HORIZON_LABEL, rainSuggestion, creditoClima } from "../../lib/crm/weather";
 import { NIVEL_LABEL } from "../../lib/crm/opportunity";
 import { SidePanel, Field, inputCls, btnPrimary, btnGhost, EstadoBadge, RespDot } from "./crmUi";
 
@@ -129,7 +129,7 @@ export function DayPanel({ crm, ctx, fecha, onClose, onOpenMailing, onNewMailing
             </p>
             <p className={`text-xs ${c.textFaint}`}>
               {HORIZON_LABEL[kind]}. Promedio ponderado por tiendas abiertas: {clima.comunasConDato} de {clima.comunasTotal} comunas con dato ({clima.tiendasConDato} de {clima.tiendasTotal} tiendas).
-              {clima.fuente ? ` Fuente: ${clima.fuente}.` : ""} {clima.obtenidoEl ? `Obtenido el ${fmtDMY(clima.obtenidoEl)}.` : ""}
+              {clima.fuente ? ` Fuente: ${clima.fuente}.` : ""} {clima.obtenidoEl ? `Obtenido el ${fmtDMY(clima.obtenidoEl)}.` : ""} {creditoClima([clima.fuente])}
             </p>
             {sug && (
               <div className={`mt-1.5 rounded-md border p-2 text-xs ${dark ? "bg-blue-500/10 border-blue-800 text-blue-200" : "bg-blue-50 border-blue-200 text-blue-900"}`}>

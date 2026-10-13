@@ -115,3 +115,33 @@ export function rainSuggestion(day, cfg = { umbral: 60, proporcion: 50 }) {
   }
   return null;
 }
+
+/** Textos de atribución que exige cada proveedor de clima cuando se muestran sus datos. */
+export const CREDITO_OPENWEATHER = "Weather data © OpenWeather.";
+export const CREDITO_GOOGLE = "Source: Includes weather data from Google.";
+
+/**
+ * Atribución que corresponde a las fuentes de los datos que se están mostrando.
+ * @param fuentes lista de textos `fuente` (p. ej. "OpenWeather One Call 3.0", "Google Maps Platform Weather API")
+ * @returns "" si no hay datos o la fuente no es una de las conocidas
+ */
+export function creditoClima(fuentes) {
+  const set = new Set((fuentes || []).map((f) => String(f || "")));
+  const out = [];
+  for (const f of set) {
+    if (/openweather/i.test(f) && !out.includes(CREDITO_OPENWEATHER)) out.push(CREDITO_OPENWEATHER);
+    if (/google/i.test(f) && !out.includes(CREDITO_GOOGLE)) out.push(CREDITO_GOOGLE);
+  }
+  return out.join(" ");
+}
+
+/** Proveedores de clima distintos presentes en los datos cargados ("openweather" | "google"). */
+export function proveedoresClima(fuentes) {
+  const set = new Set((fuentes || []).map((f) => String(f || "")));
+  const out = [];
+  for (const f of set) {
+    if (/openweather/i.test(f) && !out.includes("openweather")) out.push("openweather");
+    if (/google/i.test(f) && !out.includes("google")) out.push("google");
+  }
+  return out;
+}

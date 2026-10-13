@@ -147,3 +147,16 @@ test("csv: separador coma, comillas y archivos inválidos", () => {
   assert.ok(csv.previewImport("Fecha;Título", { catalogo: [], responsables: [] }).errorGeneral.includes("No hay filas"));
   assert.ok(csv.previewImport("x".repeat(csv.MAX_IMPORT_BYTES + 1), {}).errorGeneral.includes("2 MB"));
 });
+
+test("clima: el crédito en pantalla corresponde al proveedor de los datos", () => {
+  assert.equal(w.creditoClima([]), "");
+  assert.equal(w.creditoClima(undefined), "");
+  assert.equal(w.creditoClima(["PRUEBA"]), "");
+  assert.equal(w.creditoClima(["OpenWeather One Call 3.0", "OpenWeather One Call 3.0"]), w.CREDITO_OPENWEATHER);
+  assert.equal(w.creditoClima(["Google Maps Platform Weather API"]), w.CREDITO_GOOGLE);
+  // si por un cambio de proveedor conviven ambas fuentes, se muestran los dos créditos
+  const ambos = w.creditoClima(["Google Maps Platform Weather API", null, "OpenWeather One Call 3.0"]);
+  assert.ok(ambos.includes(w.CREDITO_OPENWEATHER) && ambos.includes(w.CREDITO_GOOGLE));
+  assert.deepEqual(w.proveedoresClima(["Google Maps Platform Weather API", undefined]), ["google"]);
+  assert.deepEqual(w.proveedoresClima([]), []);
+});

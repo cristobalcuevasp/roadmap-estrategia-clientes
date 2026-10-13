@@ -6,7 +6,7 @@ import {
   todayCL, parts, isoOf, daysInMonth, addMonthsISO, addDaysISO, mondayOf, fmtMonth, fmtWeek, weekDays, weekdayIdx, isWeekend, fmtDMY, fmtDM,
 } from "../../lib/crm/calendar";
 import { makeOpportunityIndex } from "../../lib/crm/opportunity";
-import { regionDay, BANDAS, bandRangeLabel } from "../../lib/crm/weather";
+import { regionDay, BANDAS, bandRangeLabel, creditoClima } from "../../lib/crm/weather";
 import { FILTROS_VACIOS, filterMailings, groupByDate, conflictMap, rangeKpis, workload } from "../../lib/crm/analysis";
 import { MonthGrid, WeekGrid, Agenda, daysOfMonth } from "./Calendars";
 import { MailingModal } from "./MailingModal";
@@ -287,7 +287,7 @@ export function CrmView({ session, me, users, nameOf, showToast, dark, deepLink,
         <p className={`text-xs ${c.textFaint}`}>
           {crm.clima.length === 0 ? "Clima: aún no hay pronóstico cargado, por eso no se muestran probabilidades de lluvia." : diasConClima === 0 ? `Clima: no hay pronóstico para ${regionLabel} en este período (la fuente solo entrega unos pocos días hacia adelante).` : `Clima: ${diasConClima} día(s) con pronóstico en este período para ${regionLabel}.`}
           {ultimaClima ? ` Última ejecución automática: ${new Date(ultimaClima.fin || ultimaClima.inicio).toLocaleString("es-CL")}, ${ESTADO_EJEC[ultimaClima.estado] || ultimaClima.estado}${ultimaClima.estado === "error" || ultimaClima.estado === "parcial" ? " (detalle en Configuración → Clima)" : ""}.` : " Todavía no se ha ejecutado ninguna actualización automática."}
-          {crm.clima.length > 0 && " Weather data © OpenWeather."}
+          {crm.clima.length > 0 && ` ${creditoClima(crm.clima.map((r) => r.fuente))}`}
         </p>
       )}
 

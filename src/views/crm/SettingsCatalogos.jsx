@@ -93,15 +93,14 @@ export function CatalogosTab({ crm, c }) {
 }
 
 function RespRow({ r, crm, c, users }) {
-  const [d, setD] = useState({ nombre: r.nombre, iniciales: r.iniciales, email: r.email || "", color: r.color, member_id: r.member_id || "", activo: r.activo });
-  const dirty = d.nombre !== r.nombre || d.iniciales !== r.iniciales || d.email !== (r.email || "") || d.color !== r.color || d.member_id !== (r.member_id || "") || d.activo !== r.activo;
+  const [d, setD] = useState({ nombre: r.nombre, iniciales: r.iniciales, color: r.color, member_id: r.member_id || "", activo: r.activo });
+  const dirty = d.nombre !== r.nombre || d.iniciales !== r.iniciales || d.color !== r.color || d.member_id !== (r.member_id || "") || d.activo !== r.activo;
   const bad = !d.nombre.trim() || d.iniciales.trim().length < 1 || d.iniciales.trim().length > 4;
   return (
     <div className={`flex flex-wrap items-center gap-1.5 py-2 border-t ${c.borderSubtle}`}>
       <RespDot resp={{ ...r, ...d }} size="md" />
       <input aria-label="Nombre" className={`${inputCls(c, "flex-1 min-w-[9rem]")}`} value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
       <input aria-label="Iniciales" maxLength={4} className={`${inputCls(c, "w-16")}`} value={d.iniciales} onChange={(e) => setD({ ...d, iniciales: e.target.value })} />
-      <input aria-label="Correo" type="email" className={`${inputCls(c, "flex-1 min-w-[12rem]")}`} placeholder="correo@empresa.cl" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} />
       <select aria-label="Color" className={`${inputCls(c, "w-24")}`} value={d.color} onChange={(e) => setD({ ...d, color: e.target.value })}>{COLOR_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}</select>
       <select aria-label="Cuenta en la app" className={`${inputCls(c, "w-44")}`} value={d.member_id} onChange={(e) => setD({ ...d, member_id: e.target.value })}>
         <option value="">Sin cuenta en la app</option>
@@ -114,20 +113,19 @@ function RespRow({ r, crm, c, users }) {
 }
 
 export function ResponsablesTab({ crm, c, users }) {
-  const [nuevo, setNuevo] = useState({ nombre: "", iniciales: "", email: "" });
+  const [nuevo, setNuevo] = useState({ nombre: "", iniciales: "" });
   const ok = nuevo.nombre.trim() && nuevo.iniciales.trim().length >= 1 && nuevo.iniciales.trim().length <= 4;
   const add = async () => {
-    const row = await crm.saveResponsable(null, { nombre: nuevo.nombre, iniciales: nuevo.iniciales, email: nuevo.email, color: COLOR_KEYS[crm.responsables.length % COLOR_KEYS.length], member_id: null, activo: true });
-    if (row) setNuevo({ nombre: "", iniciales: "", email: "" });
+    const row = await crm.saveResponsable(null, { nombre: nuevo.nombre, iniciales: nuevo.iniciales, color: COLOR_KEYS[crm.responsables.length % COLOR_KEYS.length], member_id: null, activo: true });
+    if (row) setNuevo({ nombre: "", iniciales: "" });
   };
   return (
     <div>
-      <p className={`text-xs mb-2 ${c.textFaint}`}>Las iniciales (1 a 4 letras) son las que se ven en el calendario y no se pueden repetir entre responsables activos. Si vinculas una cuenta de la app, esa persona recibe avisos de los comentarios que se le asignen. Los correos corporativos se guardan para el aviso por correo, que aún no está activo.</p>
+      <p className={`text-xs mb-2 ${c.textFaint}`}>Las iniciales (1 a 4 letras) son las que se ven en el calendario y no se pueden repetir entre responsables activos. Si vinculas una cuenta de la app, esa persona recibe avisos de los comentarios que se le asignen. Los avisos se ven solo dentro de la app (campana); no se envían correos.</p>
       {crm.responsables.map((r) => <RespRow key={r.id + r.updated_at} r={r} crm={crm} c={c} users={users} />)}
       <div className={`flex flex-wrap gap-1.5 pt-3 mt-1 border-t ${c.borderSubtle}`}>
         <input className={`${inputCls(c, "flex-1 min-w-[9rem]")}`} placeholder="Nombre" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
         <input maxLength={4} className={`${inputCls(c, "w-16")}`} placeholder="Inic." value={nuevo.iniciales} onChange={(e) => setNuevo({ ...nuevo, iniciales: e.target.value })} />
-        <input type="email" className={`${inputCls(c, "flex-1 min-w-[12rem]")}`} placeholder="correo@empresa.cl" value={nuevo.email} onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })} />
         <button type="button" disabled={!ok} onClick={add} className={`${btnOutline(c)} flex items-center gap-1 shrink-0 disabled:opacity-50`}><Plus className="w-3.5 h-3.5" />Agregar</button>
       </div>
     </div>

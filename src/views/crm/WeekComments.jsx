@@ -57,7 +57,7 @@ function CommentItem({ cm, crm, ctx, me, nameOf, focused, showToast }) {
       )}
       <div className="mt-1.5 flex items-center justify-between gap-2 flex-wrap">
         <span className={`flex items-center gap-1.5 text-xs ${c.textFaint}`}>
-          {resp0 ? <><RespDot resp={resp0} />Asignado a {resp0.nombre}{resp0.email ? ` (${resp0.email})` : ""}</> : "Sin responsable asignado"}
+          {resp0 ? <><RespDot resp={resp0} />Asignado a {resp0.nombre}</> : "Sin responsable asignado"}
         </span>
         <span className="flex items-center gap-2">
           {isAuthor && !editing && <button type="button" onClick={() => setEditing(true)} className={`flex items-center gap-1 text-xs ${c.textDim}`}><Pencil className="w-3 h-3" />Editar</button>}
@@ -108,7 +108,7 @@ export function WeekComments({ crm, ctx, monday, onChangeWeek, onClose, me, name
         </select>
         <label className={`flex items-center gap-2 text-xs ${c.textDim}`}><input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} />Avisar a la persona asignada</label>
         <p className={`text-xs flex items-start gap-1 ${c.textFaint}`}><Info className="w-3.5 h-3.5 shrink-0 mt-px" />
-          El aviso llega a la campana de la app. El aviso por correo electrónico todavía no está activo (requiere que TI verifique el dominio de envío).
+          El aviso llega a la campana de la app; no se envían correos.
           {sinCuenta ? " Esta persona aún no tiene cuenta vinculada en la app, así que no recibirá aviso." : ""}
         </p>
         <div className="flex justify-end"><button type="button" disabled={!cuerpo.trim() || busy} onClick={send} className={btnPrimary}>Guardar comentario</button></div>

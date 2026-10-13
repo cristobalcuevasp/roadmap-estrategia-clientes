@@ -91,7 +91,7 @@ begin
   exception when check_violation then rep := rep || E'\nOK semana que no empieza en lunes rechazada'; end;
   reset role;
   select correo_responsable into t from public.crm_comentarios_semana where id = c;
-  rep := rep || E'\n' || case when t is not null and t = (select email from public.crm_responsables where id = v_cco) then 'OK ' else 'FALLA ' end || 'el correo del responsable se copia al comentario';
+  rep := rep || E'\n' || case when t is not distinct from (select email from public.crm_responsables where id = v_cco) then 'OK ' else 'FALLA ' end || 'lo que haya en el correo del responsable se copia igual al comentario (el envío de correos quedó fuera del alcance)';
   select count(*) into n from public.notifications where type='crm_comment' and target='cristobal_cordoba' and link = 'crm/comentario/' || c::text;
   rep := rep || E'\n' || case when n = 1 then 'OK ' else 'FALLA ' end || 'aviso en la app para el responsable=' || n;
 
@@ -141,14 +141,26 @@ begin
   rep := rep || E'\n' || case when n = 0 then 'OK ' else 'FALLA ' end || 'persona ajena al equipo ve feriados=' || n;
   reset role;
 
-  -- 8) Clima automático (migración 0004)
-  select count(*) into n from cron.job where jobname in ('crm-clima-1','crm-clima-2') and active;
-  rep := rep || E'\n' || case when n = 2 then 'OK ' else 'FALLA ' end || 'trabajos programados del clima=' || n;
+  -- 8) Clima automático (migraciones 0004 y 0005)
+  select count(*) into n from cron.job where jobname in ('crm-clima-1','crm-clima-2','crm-clima-3','crm-clima-purga') and active;
+  rep := rep || E'\n' || case when n = 4 then 'OK ' else 'FALLA ' end || 'trabajos programados del clima=' || n;
   select decrypted_secret into v_secreto from vault.decrypted_secrets where name = 'crm_clima_cron_secret';
   rep := rep || E'\n' || case when length(coalesce(v_secreto,'')) >= 32 then 'OK ' else 'FALLA ' end || 'el secreto interno existe en Vault (largo suficiente)';
   rep := rep || E'\n' || case when public.crm_clima_verificar_secreto(v_secreto) and not public.crm_clima_verificar_secreto('x') and not public.crm_clima_verificar_secreto('') and not public.crm_clima_verificar_secreto(null) then 'OK ' else 'FALLA ' end || 'verificación del secreto: acepta el correcto y rechaza vacío/nulo/incorrecto';
   rep := rep || E'\n' || case when has_function_privilege('service_role', 'public.crm_clima_verificar_secreto(text)', 'execute') and not has_function_privilege('anon', 'public.crm_clima_verificar_secreto(text)', 'execute') and not has_function_privilege('authenticated', 'public.crm_clima_verificar_secreto(text)', 'execute') then 'OK ' else 'FALLA ' end || 'solo service_role puede ejecutar la verificación del secreto';
   rep := rep || E'\n' || case when not has_function_privilege('anon', 'private.crm_clima_disparar()', 'execute') and not has_function_privilege('authenticated', 'private.crm_clima_disparar()', 'execute') then 'OK ' else 'FALLA ' end || 'anon y authenticated no pueden disparar la actualización';
+  rep := rep || E'\n' || case when not has_function_privilege('anon', 'private.crm_clima_purgar_google()', 'execute') and not has_function_privilege('authenticated', 'private.crm_clima_purgar_google()', 'execute') then 'OK ' else 'FALLA ' end || 'anon y authenticated no pueden ejecutar la purga de Google';
+  -- La purga borra solo pronósticos de Google con más de 23 horas (24 h es el máximo que permiten sus términos).
+  insert into public.crm_clima_pronostico (comuna_id, fecha, obtenido_el, prob_precip, fuente, obtenido_en)
+    select id, d0, date '2031-01-01', 10, f, now() - h
+    from (select id from public.crm_comunas order by id limit 1) cm,
+         (values (date '2031-01-02', 'Google Maps Platform Weather API', interval '24 hours'),
+                 (date '2031-01-03', 'Google Maps Platform Weather API', interval '11 hours'),
+                 (date '2031-01-04', 'OpenWeather One Call 3.0', interval '72 hours')) v(d0, f, h);
+  n := private.crm_clima_purgar_google();
+  rep := rep || E'\n' || case when n = 1 then 'OK ' else 'FALLA ' end || 'la purga borró solo el pronóstico de Google de 24 h (borradas=' || n || ')';
+  select count(*) into n from public.crm_clima_pronostico where obtenido_el = date '2031-01-01';
+  rep := rep || E'\n' || case when n = 2 then 'OK ' else 'FALLA ' end || 'la purga conservó el de Google de 11 h y el de OpenWeather (quedan=' || n || ')';
   perform set_config('request.jwt.claims', json_build_object('sub', u_cuevas, 'role', 'authenticated')::text, true);
   perform set_config('request.jwt.claim.sub', u_cuevas::text, true);
   set local role authenticated;

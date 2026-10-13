@@ -14,6 +14,7 @@ export interface FilaClima {
   tmin: number | null;
   tmax: number | null;
   fuente: string;
+  obtenido_en?: string; // instante exacto de la consulta (lo completa index.ts)
 }
 
 export class ErrorClima extends Error {
@@ -27,11 +28,11 @@ export class ErrorClima extends Error {
   }
 }
 
-/** Quita la clave y cualquier "appid=..." de un texto antes de guardarlo o devolverlo. */
+/** Quita la clave y cualquier "appid=..." o "key=..." de un texto antes de guardarlo o devolverlo. */
 export function limpiar(texto: unknown, clave?: string): string {
   let t = String(texto ?? "");
   if (clave) t = t.split(clave).join("[clave]");
-  return t.replace(/appid=[^&\s"')]+/gi, "appid=[clave]").slice(0, 300);
+  return t.replace(/(appid|key)=[^&\s"')]+/gi, "$1=[clave]").slice(0, 300);
 }
 
 export function urlOneCall(lat: number, lon: number, clave: string, base = ENDPOINT): string {
