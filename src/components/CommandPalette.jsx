@@ -4,7 +4,7 @@ import { sortTasks } from "../lib/dates";
 import { tokens } from "../lib/theme";
 import { TypeSquare } from "./ui";
 
-export function CommandPalette({ open, onClose, tasks, setView, openTask, openNew, dark, setDark }) {
+export function CommandPalette({ open, onClose, tasks, setView, openTask, openNew, dark, setDark, hidden = [] }) {
   const c = tokens(dark);
   const [q, setQ] = useState("");
   const inputRef = useRef(null);
@@ -20,6 +20,7 @@ export function CommandPalette({ open, onClose, tasks, setView, openTask, openNe
     { label: "Ir a Weekly Review", run: () => { onClose(); setView("weekly"); } },
     { label: "Ir a Reportes", run: () => { onClose(); setView("dashboard"); } },
     { label: "Ir a Programación CRM", run: () => { onClose(); setView("crm"); } },
+    ...(hidden.includes("fb") ? [] : [{ label: "Ir a Feedback & Desarrollo", run: () => { onClose(); setView("fb"); } }]),
     { label: dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro", run: () => { onClose(); setDark(!dark); } },
   ];
   const ql = q.toLowerCase();

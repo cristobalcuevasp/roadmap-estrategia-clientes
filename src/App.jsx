@@ -4,6 +4,7 @@ import { TeamCtx } from "./lib/team";
 import { getRisk, daysUntil, weekRange, inRange } from "./lib/dates";
 import { isConfigured } from "./lib/supabase";
 import { useRoadmap, useTaskHistory } from "./lib/useRoadmap";
+import { useFbAccess } from "./lib/useFb";
 import { AuthGate } from "./auth/AuthGate";
 import { NoAccessScreen, LoadErrorScreen, MissingConfigScreen } from "./auth/StatusScreens";
 import { LoadingScreen } from "./components/LoadingScreen";
@@ -22,6 +23,7 @@ import { WeeklyReview } from "./views/WeeklyReview";
 import { RoadmapView } from "./views/RoadmapView";
 import { Dashboard } from "./views/Dashboard";
 import { CrmView } from "./views/crm/CrmView";
+import { FbView } from "./views/fb/FbView";
 
 const defaultFilters = { assignees: [], priority: "all", status: "all", type: "all", project: "all", onlyOverdue: false, onlyBlocked: false, onlyUnassigned: false };
 
@@ -37,6 +39,8 @@ function savePrefs(partial) {
 function RoadmapApp({ session, signOut, dark, toggleDark }) {
   const rm = useRoadmap(session);
   const { phase, me, users, tasks, notifications } = rm;
+  const fbAccess = useFbAccess(session.user.id); // qué puede ver esta cuenta en Feedback & Desarrollo
+  const hiddenViews = useMemo(() => (fbAccess.visible ? [] : ["fb"]), [fbAccess.visible]);
 
   const [view, setView] = useState("kanban");
   const [filters, setFilters] = useState(defaultFilters);
@@ -105,7 +109,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
       const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((p) => !p); return; }
       if (typing) return;
-      if (e.key === "c" && view !== "crm" && !modalTaskId && !creatingNew && !teamEditOpen && !passwordOpen) openNew();
+      if (e.key === "c" && view !== "crm" && view !== "fb" && !modalTaskId && !creatingNew && !teamEditOpen && !passwordOpen) openNew();
       if (e.key === "/") { e.preventDefault(); document.getElementById("global-search")?.focus(); }
       if (e.key === "Escape") setPaletteOpen(false);
     };
@@ -157,7 +161,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
   return (
     <TeamCtx.Provider value={teamCtx}>
       <div className={`flex h-screen overflow-hidden ${c.app}`} style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
-        <Sidebar view={view} setView={setView} kpis={kpis} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} collapsed={collapsed} setCollapsed={setCollapsed} currentUser={me} dark={dark} setDark={toggleDark} />
+        <Sidebar view={view} setView={setView} kpis={kpis} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} collapsed={collapsed} setCollapsed={setCollapsed} currentUser={me} dark={dark} setDark={toggleDark} hidden={hiddenViews} />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar viewLabel={viewLabel} onNew={openNew} live={rm.live} saving={rm.saving} onRefresh={rm.refresh} setMobileOpen={setMobileOpen} currentUser={me}
             onPalette={() => setPaletteOpen(true)} notifications={notifications} onMarkRead={rm.markRead} onMarkAllRead={rm.markAllRead} openTask={openTask} onOpenLink={openCrmLink}
@@ -170,6 +174,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
             {view === "weekly" && <WeeklyReview tasks={tasks} openTask={openTask} />}
             {view === "roadmap" && <RoadmapView tasks={tasks} openTask={openTask} />}
             {view === "dashboard" && <Dashboard tasks={tasks} kpis={kpis} openTask={openTask} goFiltered={goFiltered} />}
+            {view === "fb" && fbAccess.visible && <FbView session={session} access={fbAccess.access} users={users} nameOf={rm.nameOf} showToast={rm.showToast} dark={dark} />}
             {view === "crm" && <CrmView session={session} me={me} users={users} nameOf={rm.nameOf} showToast={rm.showToast} dark={dark} deepLink={crmLink} clearDeepLink={() => setCrmLink(null)} />}
           </main>
         </div>
@@ -178,7 +183,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
           <TaskModal key={creatingNew ? "new" : liveModalTask.id} liveTask={creatingNew ? null : liveModalTask} history={history} isNew={creatingNew} currentUser={me} allTasks={tasks}
             onClose={closeModal} onSave={saveTask} onDelete={deleteTask} onAddComment={rm.addComment} />
         )}
-        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} tasks={tasks} setView={setView} openTask={openTask} openNew={openNew} dark={dark} setDark={toggleDark} />
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} tasks={tasks} setView={setView} openTask={openTask} openNew={openNew} dark={dark} setDark={toggleDark} hidden={hiddenViews} />
         {teamEditOpen && <TeamEditModal users={users} onClose={() => setTeamEditOpen(false)} onSave={saveTeam} />}
         {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} onDone={() => { setPasswordOpen(false); rm.showToast("Contraseña actualizada.", "ok"); }} />}
         <Toast toast={rm.toast} onClose={rm.dismissToast} />

@@ -6,6 +6,7 @@ Aplicación web para que el equipo de Estrategia de Clientes gestione tareas, pr
 - **Backend:** **Supabase** (Postgres + Auth + Realtime). Proyecto `lcahshmjefleteauhmkx` (región São Paulo).
 - **Seguridad:** inicio de sesión con correo y contraseña; cada tabla tiene RLS, así que solo los integrantes del equipo ven o modifican datos.
 - **Módulo PROGRAMACIÓN CRM** (calendario de mailings de Preunic, con clima, feriados y días de pago): ver la sección [Programación CRM](#programación-crm).
+- **Módulo FEEDBACK & DESARROLLO** (fichas individuales, roles, objetivos, feedback con minuta, compromisos y preparación de reuniones): ver la sección [Feedback & Desarrollo](#feedback--desarrollo).
 
 ## Cómo funciona
 
@@ -98,12 +99,41 @@ Los comentarios semanales asignados a alguien con cuenta vinculada generan un av
 ### Pruebas
 
 ```bash
-node tests/run.mjs        # lógica del módulo: calendario, días de pago, clima, CSV, análisis, parseo de OpenWeather y de Google
+node tests/run.mjs        # lógica de los módulos: calendario, días de pago, clima, CSV, análisis, parseo de OpenWeather y de Google, y Feedback & Desarrollo
 ```
 
-`supabase/tests/crm_rls_test.sql` es una prueba de base de datos (permisos, historial, avisos, seguridad del clima). Se ejecuta dentro de una transacción que siempre se revierte, así que no deja datos; el informe aparece en el mensaje de error (líneas `OK` / `FALLA`).
+`supabase/tests/crm_rls_test.sql` y `supabase/tests/fb_rls_test.sql` son pruebas de base de datos (permisos, historial, avisos, seguridad del clima; y en Feedback & Desarrollo, quién ve qué, publicación, versiones y revisiones de compromisos). Se ejecutan dentro de una transacción que siempre se revierte, así que no dejan datos; el informe aparece en el mensaje de error (líneas `OK` / `FALLA`).
 
 Lo que **no** cubren las pruebas automáticas: el clima real de OpenWeather o Google (hasta cargar una clave; las pruebas usan respuestas sintéticas con la forma documentada) y el uso en un celular real. Se validan a mano.
+
+## Feedback & Desarrollo
+
+Menú lateral → grupo **Personas** → *Feedback & Desarrollo* (migración `supabase/migrations/0007_feedback_desarrollo.sql`).
+
+**Quién ve qué.** Las fichas son individuales. Quien es **líder** ve y edita todas las fichas, las notas privadas, los borradores, la auditoría y la configuración. Cada **integrante** ve solo su propia ficha, en modo lectura: sus roles, objetivos, compromisos (con su historial de revisiones) y las minutas **publicadas** con sus versiones. Nunca ve notas privadas, borradores, la auditoría ni las fichas de otras personas. Una cuenta sin ficha ni liderazgo no ve la entrada del módulo. Estas reglas las aplica la base de datos (RLS), no solo la interfaz.
+
+**Definir quién es líder.** Es la tabla `public.fb_lideres`, que guarda el `id` de un miembro del equipo (`team_members.id`); no se escriben correos. La migración deja como líder al miembro `cristobal_cuevas`. Para agregar o quitar a alguien, desde el *SQL Editor* de Supabase:
+
+```sql
+insert into public.fb_lideres (member_id) values ('<id del miembro>');
+delete from public.fb_lideres where member_id = '<id del miembro>';
+```
+
+Una persona queda asociada a su cuenta cuando se registra con el correo cargado en *Editar equipo* (igual que el resto de la app). Mientras no tenga cuenta, solo el líder ve su ficha.
+
+**Qué incluye.**
+- **Panel:** indicadores del equipo, gráficos de los últimos 6 meses (reuniones, compromisos y objetivos), alertas (sin feedback reciente, compromisos vencidos o por vencer, objetivos sin actualizar) y próximas reuniones de seguimiento.
+- **Ficha:** resumen, roles y expectativas (con historial), objetivos con avance, historial de feedback, compromisos, evolución (línea de tiempo) y, solo para el líder, notas privadas y registro de cambios.
+- **Feedback:** formulario en tres pasos (registro de la conversación, compromisos y seguimiento, minuta). La minuta de 7 secciones se arma sola con lo registrado (sin inteligencia artificial) y se puede editar antes de publicar. Al publicar, los compromisos quedan creados y vinculados.
+- **Minuta publicada:** no se edita directamente; cada cambio exige un motivo y crea una **versión nueva** (se puede ver qué cambió). Se imprime o guarda como PDF desde el diálogo de impresión del navegador y nunca incluye notas privadas.
+- **Compromisos:** estado, avance y vencimiento cambian solo con *Revisar compromiso*, que deja una revisión permanente (nada se borra). «Vencido» se calcula por fecha. Vista de tabla y de tablero (no arrastrable).
+- **Preparar feedback:** resumen de lo pendiente antes de la reunión (último feedback, compromisos abiertos, lo cumplido desde entonces, objetivos que requieren atención, temas pendientes) y una agenda editable que se lleva al formulario.
+- **Agenda:** seguimientos programados por semana; al publicar una minuta, los seguimientos programados hasta esa fecha pasan a «realizado».
+- **Configuración** (solo líder): integrantes y fichas, catálogo de roles y umbrales de las alertas del panel.
+
+**Cumplimiento de compromisos** = cumplidos ÷ (cumplidos + vencidos).
+
+**Aún no incluye** (quedó para una segunda etapa): metas numéricas/KPIs, plan de desarrollo y competencias, alertas automáticas por correo o notificación push, ayuda de inteligencia artificial, archivos adjuntos, políticas de retención y un calendario mensual completo (hay una agenda por semana).
 
 ## Uso diario
 
@@ -127,7 +157,7 @@ Requiere Node 18 o superior.
 
 - La URL y la clave `sb_publishable_…` de `.env.production` son **públicas por diseño** (viajan dentro del sitio). El acceso real lo controlan las políticas RLS de `supabase/migrations/0001_schema.sql`.
 - **Nunca** pongas la clave `service_role` en este repositorio ni en el frontend.
-- `supabase/seed/` (la minuta cargada inicialmente) está en `.gitignore` porque contiene contenido interno y correos de terceros. Si algún día necesitas recrear la base, ejecuta en el *SQL Editor* de Supabase, en este orden, `supabase/migrations/0001_schema.sql`, `0002_keepalive.sql`, `0003_crm.sql`, `0004_clima_automatico.sql`, `0005_clima_google.sql`, `0006_clima_una_vez_al_dia.sql` y luego ese archivo.
+- `supabase/seed/` (la minuta cargada inicialmente) está en `.gitignore` porque contiene contenido interno y correos de terceros. Si algún día necesitas recrear la base, ejecuta en el *SQL Editor* de Supabase, en este orden, `supabase/migrations/0001_schema.sql`, `0002_keepalive.sql`, `0003_crm.sql`, `0004_clima_automatico.sql`, `0005_clima_google.sql`, `0006_clima_una_vez_al_dia.sql`, `0007_feedback_desarrollo.sql` y luego ese archivo.
 
 ## Hosting alternativo
 

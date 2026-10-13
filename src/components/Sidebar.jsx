@@ -1,4 +1,4 @@
-import { LayoutDashboard, LayoutGrid, ListChecks, Zap, CalendarRange, CalendarDays, Users, User, ChevronsLeft, ChevronsRight, Sun, Moon } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, ListChecks, Zap, CalendarRange, CalendarDays, Users, User, ChevronsLeft, ChevronsRight, Sun, Moon, MessagesSquare } from "lucide-react";
 import { tokens } from "../lib/theme";
 import { Avatar } from "./ui";
 
@@ -11,10 +11,12 @@ export const NAV = [
   { id: "weekly", label: "Weekly Review", icon: Users, group: "GESTIÓN" },
   { id: "dashboard", label: "Reportes", icon: LayoutDashboard, group: "GESTIÓN" },
   { id: "crm", label: "Programación CRM", icon: CalendarDays, group: "CRM" },
+  { id: "fb", label: "Feedback & Desarrollo", icon: MessagesSquare, group: "PERSONAS" },
 ];
-export const GROUPS = ["TRABAJO", "GESTIÓN", "CRM"];
+export const GROUPS = ["TRABAJO", "GESTIÓN", "CRM", "PERSONAS"];
 
-export function Sidebar({ view, setView, kpis, mobileOpen, setMobileOpen, collapsed, setCollapsed, currentUser, dark, setDark }) {
+/* hidden: ids de secciones que esta cuenta no puede usar (por ejemplo "fb" si no tiene ficha) */
+export function Sidebar({ view, setView, kpis, mobileOpen, setMobileOpen, collapsed, setCollapsed, currentUser, dark, setDark, hidden = [] }) {
   const c = tokens(dark);
   const width = collapsed ? "w-14" : "w-56";
   return (
@@ -39,10 +41,10 @@ export function Sidebar({ view, setView, kpis, mobileOpen, setMobileOpen, collap
               <ChevronsRight className="w-4 h-4" />
             </button>
           )}
-          {GROUPS.map((g) => (
+          {GROUPS.filter((g) => NAV.some((n) => n.group === g && !hidden.includes(n.id))).map((g) => (
             <div key={g} className="mb-2">
               {!collapsed && <p className={`text-xs font-semibold tracking-wider uppercase px-2 py-1 ${c.groupLabel}`}>{g}</p>}
-              {NAV.filter((n) => n.group === g).map((n) => {
+              {NAV.filter((n) => n.group === g && !hidden.includes(n.id)).map((n) => {
                 const Icon = n.icon;
                 const active = view === n.id;
                 let badge = null;
