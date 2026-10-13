@@ -141,9 +141,11 @@ begin
   rep := rep || E'\n' || case when n = 0 then 'OK ' else 'FALLA ' end || 'persona ajena al equipo ve feriados=' || n;
   reset role;
 
-  -- 8) Clima automático (migraciones 0004 y 0005)
-  select count(*) into n from cron.job where jobname in ('crm-clima-1','crm-clima-2','crm-clima-3','crm-clima-purga') and active;
-  rep := rep || E'\n' || case when n = 4 then 'OK ' else 'FALLA ' end || 'trabajos programados del clima=' || n;
+  -- 8) Clima automático (migraciones 0004 a 0006): una sola actualización diaria + la purga horaria
+  select count(*) into n from cron.job where jobname in ('crm-clima','crm-clima-purga') and active;
+  rep := rep || E'\n' || case when n = 2 then 'OK ' else 'FALLA ' end || 'trabajos programados del clima=' || n;
+  select count(*) into n from cron.job where jobname like 'crm-clima%' and jobname <> 'crm-clima-purga';
+  rep := rep || E'\n' || case when n = 1 then 'OK ' else 'FALLA ' end || 'una sola tarea de actualización diaria (sin duplicadas)=' || n;
   select decrypted_secret into v_secreto from vault.decrypted_secrets where name = 'crm_clima_cron_secret';
   rep := rep || E'\n' || case when length(coalesce(v_secreto,'')) >= 32 then 'OK ' else 'FALLA ' end || 'el secreto interno existe en Vault (largo suficiente)';
   rep := rep || E'\n' || case when public.crm_clima_verificar_secreto(v_secreto) and not public.crm_clima_verificar_secreto('x') and not public.crm_clima_verificar_secreto('') and not public.crm_clima_verificar_secreto(null) then 'OK ' else 'FALLA ' end || 'verificación del secreto: acepta el correcto y rechaza vacío/nulo/incorrecto';

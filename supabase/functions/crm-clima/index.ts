@@ -5,7 +5,8 @@
 //   • google      → Google Maps Platform Weather API, clave en el secreto GOOGLE_WEATHER_API_KEY.
 //                   Por sus términos, el pronóstico se borra a las 24 horas (ver google.ts y la migración 0005).
 //
-// Quién la llama: pg_cron, tres veces al día, mediante private.crm_clima_disparar() (migraciones 0004 y 0005).
+// Quién la llama: pg_cron, UNA vez al día (09:30 UTC), mediante private.crm_clima_disparar() (migraciones 0004 a 0006).
+// Una segunda llamada el mismo día (manual) no consulta de nuevo si la primera salió bien, salvo con {"force": true}.
 // Seguridad: la función se despliega sin verificación de JWT y exige el encabezado x-cron-secret,
 // que se valida contra un secreto guardado en Vault (rpc crm_clima_verificar_secreto). Las claves de los
 // proveedores viven solo como secretos de la función; nunca se escriben en el repositorio, ni en la base
@@ -26,8 +27,6 @@ interface Proveedor {
   filas: (payload: any, comunaId: number, hoy: string) => FilaClima[];
   /** true si el proveedor exige borrar el pronóstico a las 24 horas */
   borrarA24h: boolean;
-  /** Cuánto tiempo debe pasar desde la última corrida buena para volver a consultar. */
-  yaActualizado: (finUltimaOk: Date, ahora: Date) => boolean;
 }
 
 const PROVEEDORES: Record<string, Proveedor> = {
@@ -36,16 +35,12 @@ const PROVEEDORES: Record<string, Proveedor> = {
     url: (lat, lon, clave) => urlOneCall(lat, lon, clave),
     errorPorEstado,
     filas: (p, id, hoy) => filasDesdeRespuesta(p, id, hoy),
-    // Una vez por día calendario (en Santiago): las otras corridas del día no hacen nada.
-    yaActualizado: (fin, ahora) => hoySantiago(fin) === hoySantiago(ahora),
   },
   google: {
     id: "google", fuente: FUENTE_GOOGLE, secreto: "GOOGLE_WEATHER_API_KEY", borrarA24h: true,
     url: (lat, lon, clave) => urlGoogle(lat, lon, clave),
     errorPorEstado: errorGooglePorEstado,
     filas: (p, id, hoy) => filasDesdeGoogle(p, id, hoy),
-    // Cada ~12 horas, para que el dato guardado nunca llegue a las 24 horas.
-    yaActualizado: (fin, ahora) => ahora.getTime() - fin.getTime() < 10 * 3600_000,
   },
 };
 
@@ -126,7 +121,7 @@ Deno.serve(async (req) => {
     return json({ error: `Falta el secreto ${prov.secreto}` }, 500);
   }
 
-  // 2) Evitar corridas duplicadas y repetir el trabajo si hoy ya salió bien.
+  // 2) Evitar corridas duplicadas y repetir el trabajo si hoy ya salió bien (una vez al día).
   const hace = new Date(Date.now() - EN_CURSO_VIGENTE_MIN * 60_000).toISOString();
   await db.from("crm_clima_ejecuciones").update({ estado: "error", fin: new Date().toISOString(), detalle: "Corrida interrumpida (no terminó)." })
     .eq("estado", "en_curso").lt("inicio", hace);
@@ -135,7 +130,8 @@ Deno.serve(async (req) => {
   if (!force) {
     const { data: ultimas } = await db.from("crm_clima_ejecuciones").select("fin").eq("estado", "ok").eq("fuente", prov.fuente).order("fin", { ascending: false }).limit(1);
     const fin = ultimas?.[0]?.fin;
-    if (fin && prov.yaActualizado(new Date(fin), new Date())) return json({ omitida: true, motivo: "Ya se actualizó correctamente hace poco" });
+    // Una sola actualización buena por día calendario (en Santiago), con cualquier proveedor.
+    if (fin && hoySantiago(new Date(fin)) === hoy) return json({ omitida: true, motivo: "Ya se actualizó correctamente hoy" });
   }
 
   const inicioCorrida = new Date().toISOString();
