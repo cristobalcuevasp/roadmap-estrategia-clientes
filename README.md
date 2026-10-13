@@ -61,26 +61,27 @@ Calendario colaborativo (mes y semana) para planificar los mailings de Marketing
 
 Las migraciones `0004_clima_automatico.sql`, `0005_clima_google.sql` y `0006_clima_una_vez_al_dia.sql` programan (pg_cron) **una sola llamada diaria** (tarea `crm-clima`, 09:30 UTC = 06:30 en horario de verano de Chile y 05:30 en invierno) a la Edge Function `crm-clima` (`supabase/functions/crm-clima/`) y una limpieza horaria (`crm-clima-purga`). No hay reintentos automáticos: si un día falla, se ve en *Configuración → Clima* y se puede repetir a mano (ver abajo). Cada ejecución queda registrada en `crm_clima_ejecuciones` y se ve en *Configuración → Clima*.
 
-La función admite **dos proveedores**; se elige con el secreto `CLIMA_PROVEEDOR` de la función (`openweather`, por defecto, o `google`):
+La función admite **tres proveedores**. Si no existe el secreto `CLIMA_PROVEEDOR`, usa **OpenWeather gratis**; para otro, se elige con ese secreto (`openweather_gratis`, `openweather` o `google`):
 
-| | OpenWeather One Call 3.0 | Google Maps Platform Weather API |
-|---|---|---|
-| Secreto con la clave | `OPENWEATHER_API_KEY` | `GOOGLE_WEATHER_API_KEY` |
-| Consultas | ~66 al día (1 por comuna con tiendas abiertas) | ~66 al día (1 por comuna con tiendas abiertas), unas 2.000 al mes |
-| Costo | 1.000 consultas diarias gratis, pero exige la suscripción «One Call by Call» | Cuota gratuita mensual de Google (consultar la tarifa vigente); exige proyecto de Google Cloud con facturación activa |
-| Horizonte | ~8 días | hasta 10 días |
-| Probabilidad de lluvia | del día | la **mayor** entre el tramo diurno (07–19 h) y el nocturno (19–07 h) |
-| Guardado | se conserva el historial de pronósticos | **se borra a las 24 horas** (condición de uso de Google); no hay pronósticos de días pasados |
-| Crédito en pantalla | «Weather data © OpenWeather.» | «Source: Includes weather data from Google.» |
+| | OpenWeather gratis (predeterminado) | OpenWeather One Call 3.0 | Google Maps Platform Weather API |
+|---|---|---|---|
+| `CLIMA_PROVEEDOR` | `openweather_gratis` (o sin definir) | `openweather` | `google` |
+| Secreto con la clave | `OPENWEATHER_API_KEY` | `OPENWEATHER_API_KEY` (la misma) | `GOOGLE_WEATHER_API_KEY` |
+| Consultas | ~66 al día (1 por comuna con tiendas abiertas) | ~66 al día | ~66 al día, unas 2.000 al mes |
+| Costo | Plan gratuito de OpenWeather (hasta 1.000.000 de llamadas al mes) | 1.000 consultas diarias gratis, pero exige la suscripción «One Call by Call» | Cuota gratuita mensual de Google (consultar la tarifa vigente); exige proyecto de Google Cloud con facturación activa |
+| Horizonte | **5 días** (bloques de 3 horas que se agrupan por día local; se descartan los días con menos de 12 horas cubiertas) | ~8 días | hasta 10 días |
+| Probabilidad de lluvia | la **mayor** entre los bloques de 3 horas del día | del día | la **mayor** entre el tramo diurno (07–19 h) y el nocturno (19–07 h) |
+| Guardado | se conserva el historial de pronósticos | se conserva el historial de pronósticos | **se borra a las 24 horas** (condición de uso de Google); no hay pronósticos de días pasados |
+| Crédito en pantalla | «Weather data © OpenWeather.» | «Weather data © OpenWeather.» | «Source: Includes weather data from Google.» |
 
-El crédito de cada proveedor se muestra solo cuando hay datos suyos en pantalla.
+El crédito de cada proveedor se muestra solo cuando hay datos suyos en pantalla. Los días más allá del horizonte del proveedor no muestran clima.
 
-**Para activarla (una sola vez):**
-1. Elegir proveedor y crear la clave:
-   - *OpenWeather:* crear la cuenta y suscribirse a *One Call by Call* (fijar el límite diario en 1.000 para no pasar al cobro).
-   - *Google:* crear un proyecto en Google Cloud con facturación, habilitar la **Weather API**, crear una clave y **restringirla a esa API**; fijar una cuota diaria para evitar cobros inesperados.
-2. En Supabase: *Edge Functions → Secrets → Add new secret* con el nombre de la clave (`OPENWEATHER_API_KEY` o `GOOGLE_WEATHER_API_KEY`) y la clave como valor. Para usar Google, agregar también `CLIMA_PROVEEDOR` = `google`. **Las claves no van en este repositorio, ni en el frontend, ni se pegan en conversaciones.**
+**Para activarla (una sola vez), con OpenWeather gratis:**
+1. Crear la cuenta en <https://home.openweathermap.org/users/sign_up> (correo y contraseña; confirmar el correo) y copiar la clave de la pestaña *API keys*. Una clave nueva puede tardar un rato (a veces un par de horas) en activarse: mientras tanto OpenWeather responde 401.
+2. En Supabase: *Edge Functions → Secrets → Add new secret* con el nombre `OPENWEATHER_API_KEY` y la clave como valor. No hace falta `CLIMA_PROVEEDOR`. **La clave no va en este repositorio, ni en el frontend, ni se pega en conversaciones.**
 3. Esperar a la siguiente ejecución, o pedir una manual (ver abajo).
+
+*Para usar Google en su lugar:* crear un proyecto en Google Cloud con facturación, habilitar la **Weather API**, crear una clave y **restringirla a esa API**, fijar una cuota diaria baja para evitar cobros inesperados, y cargar `GOOGLE_WEATHER_API_KEY` y `CLIMA_PROVEEDOR` = `google`. *Para One Call 3.0:* suscribirse a *One Call by Call* (límite diario en 1.000) y cargar `CLIMA_PROVEEDOR` = `openweather`.
 
 Seguridad de la función: se despliega sin verificación de JWT y exige el encabezado `x-cron-secret`, que se compara con un secreto generado dentro de Postgres y guardado en Vault (`crm_clima_cron_secret`). Sin ese secreto responde 401 y no consulta a ningún proveedor. Mientras falte la clave, la función solo deja registrado el aviso de que falta.
 

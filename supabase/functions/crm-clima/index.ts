@@ -1,9 +1,10 @@
 // Edge Function crm-clima: actualiza el pronóstico de lluvia por comuna.
 //
-// Proveedores (secreto CLIMA_PROVEEDOR; por defecto "openweather"):
-//   • openweather → OpenWeather One Call 3.0, clave en el secreto OPENWEATHER_API_KEY.
-//   • google      → Google Maps Platform Weather API, clave en el secreto GOOGLE_WEATHER_API_KEY.
-//                   Por sus términos, el pronóstico se borra a las 24 horas (ver google.ts y la migración 0005).
+// Proveedores (secreto CLIMA_PROVEEDOR; si no existe se usa "openweather_gratis"):
+//   • openweather_gratis → OpenWeather, plan gratuito "5 day / 3 hour forecast" (5 días), clave en OPENWEATHER_API_KEY.
+//   • openweather        → OpenWeather One Call 3.0 (suscripción «One Call by Call»), misma clave OPENWEATHER_API_KEY.
+//   • google             → Google Maps Platform Weather API, clave en el secreto GOOGLE_WEATHER_API_KEY.
+//                          Por sus términos, el pronóstico se borra a las 24 horas (ver google.ts y la migración 0005).
 //
 // Quién la llama: pg_cron, UNA vez al día (09:30 UTC), mediante private.crm_clima_disparar() (migraciones 0004 a 0006).
 // Una segunda llamada el mismo día (manual) no consulta de nuevo si la primera salió bien, salvo con {"force": true}.
@@ -17,9 +18,10 @@ import {
   type FilaClima,
 } from "./openweather.ts";
 import { FUENTE_GOOGLE, errorGooglePorEstado, filasDesdeGoogle, urlGoogle } from "./google.ts";
+import { FUENTE_OW5, errorOw5PorEstado, filasDesdeOw5, urlOw5 } from "./openweather5.ts";
 
 interface Proveedor {
-  id: "openweather" | "google";
+  id: "openweather_gratis" | "openweather" | "google";
   fuente: string;
   secreto: string; // nombre del secreto con la clave
   url: (lat: number, lon: number, clave: string) => string;
@@ -29,7 +31,15 @@ interface Proveedor {
   borrarA24h: boolean;
 }
 
+const PROVEEDOR_POR_DEFECTO = "openweather_gratis";
+
 const PROVEEDORES: Record<string, Proveedor> = {
+  openweather_gratis: {
+    id: "openweather_gratis", fuente: FUENTE_OW5, secreto: "OPENWEATHER_API_KEY", borrarA24h: false,
+    url: (lat, lon, clave) => urlOw5(lat, lon, clave),
+    errorPorEstado: errorOw5PorEstado,
+    filas: (p, id, hoy) => filasDesdeOw5(p, id, hoy),
+  },
   openweather: {
     id: "openweather", fuente: FUENTE, secreto: "OPENWEATHER_API_KEY", borrarA24h: false,
     url: (lat, lon, clave) => urlOneCall(lat, lon, clave),
@@ -102,11 +112,11 @@ Deno.serve(async (req) => {
   let force = false;
   try { force = (await req.json())?.force === true; } catch { /* sin cuerpo */ }
 
-  const proveedorId = (Deno.env.get("CLIMA_PROVEEDOR") ?? "openweather").trim().toLowerCase();
+  const proveedorId = (Deno.env.get("CLIMA_PROVEEDOR") ?? "").trim().toLowerCase() || PROVEEDOR_POR_DEFECTO;
   const prov = PROVEEDORES[proveedorId];
   const registrar = (fila: Record<string, unknown>) => db.from("crm_clima_ejecuciones").insert(fila).select("id").single();
   if (!prov) {
-    await registrar({ estado: "error", fin: new Date().toISOString(), fuente: proveedorId.slice(0, 40), detalle: "El secreto CLIMA_PROVEEDOR debe ser «openweather» o «google»." });
+    await registrar({ estado: "error", fin: new Date().toISOString(), fuente: proveedorId.slice(0, 40), detalle: "El secreto CLIMA_PROVEEDOR debe ser «openweather_gratis», «openweather» o «google» (o no existir, para usar «openweather_gratis»)." });
     return json({ error: "Proveedor de clima no válido" }, 500);
   }
 
