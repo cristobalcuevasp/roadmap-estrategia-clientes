@@ -47,6 +47,8 @@ export const NOTIF_META = {
   blocked: { icon: Ban, color: "text-purple-500" },
   p0: { icon: AlertTriangle, color: "text-red-500" },
   rompelinea: { icon: Zap, color: "text-violet-500" },
+  crm_comment: { icon: MessageSquare, color: "text-sky-500" },
+  crm_reminder: { icon: Clock, color: "text-amber-500" },
 };
 export const FREQS = ["Diaria", "Días hábiles", "Semanal", "Quincenal", "Mensual", "Personalizada"];
 export const IMPACTS = ["Alto", "Medio", "Bajo"];

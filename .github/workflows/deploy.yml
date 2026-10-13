@@ -27,6 +27,9 @@ jobs:
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
 
+      - name: Pruebas del módulo CRM
+        run: node tests/run.mjs
+
       - name: Compilar
         run: npm run build
 

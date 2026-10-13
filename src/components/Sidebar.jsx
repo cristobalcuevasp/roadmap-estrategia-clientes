@@ -1,4 +1,4 @@
-import { LayoutDashboard, LayoutGrid, ListChecks, Zap, CalendarRange, Users, User, ChevronsLeft, ChevronsRight, Sun, Moon } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, ListChecks, Zap, CalendarRange, CalendarDays, Users, User, ChevronsLeft, ChevronsRight, Sun, Moon } from "lucide-react";
 import { tokens } from "../lib/theme";
 import { Avatar } from "./ui";
 
@@ -10,8 +10,9 @@ export const NAV = [
   { id: "breakers", label: "Rompelíneas", icon: Zap, group: "GESTIÓN" },
   { id: "weekly", label: "Weekly Review", icon: Users, group: "GESTIÓN" },
   { id: "dashboard", label: "Reportes", icon: LayoutDashboard, group: "GESTIÓN" },
+  { id: "crm", label: "Programación CRM", icon: CalendarDays, group: "CRM" },
 ];
-export const GROUPS = ["TRABAJO", "GESTIÓN"];
+export const GROUPS = ["TRABAJO", "GESTIÓN", "CRM"];
 
 export function Sidebar({ view, setView, kpis, mobileOpen, setMobileOpen, collapsed, setCollapsed, currentUser, dark, setDark }) {
   const c = tokens(dark);

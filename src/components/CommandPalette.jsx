@@ -19,6 +19,7 @@ export function CommandPalette({ open, onClose, tasks, setView, openTask, openNe
     { label: "Ir a Roadmap", run: () => { onClose(); setView("roadmap"); } },
     { label: "Ir a Weekly Review", run: () => { onClose(); setView("weekly"); } },
     { label: "Ir a Reportes", run: () => { onClose(); setView("dashboard"); } },
+    { label: "Ir a Programación CRM", run: () => { onClose(); setView("crm"); } },
     { label: dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro", run: () => { onClose(); setDark(!dark); } },
   ];
   const ql = q.toLowerCase();

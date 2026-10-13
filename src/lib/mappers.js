@@ -123,6 +123,7 @@ export function notificationFromRow(n, meId, readIds, nameOf) {
     actorName: n.actor ? nameOf(n.actor) : "Sistema",
     taskId: n.task_id,
     taskTitle: n.task_title,
+    link: n.link || null,
     targetUserId: n.target ?? null,
     message: n.message,
     readBy: readIds.has(n.id) ? [meId] : [],

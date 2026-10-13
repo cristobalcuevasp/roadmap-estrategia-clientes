@@ -21,6 +21,7 @@ import { BreakersView } from "./views/BreakersView";
 import { WeeklyReview } from "./views/WeeklyReview";
 import { RoadmapView } from "./views/RoadmapView";
 import { Dashboard } from "./views/Dashboard";
+import { CrmView } from "./views/crm/CrmView";
 
 const defaultFilters = { assignees: [], priority: "all", status: "all", type: "all", project: "all", onlyOverdue: false, onlyBlocked: false, onlyUnassigned: false };
 
@@ -46,6 +47,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [teamEditOpen, setTeamEditOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [crmLink, setCrmLink] = useState(null); // destino pendiente dentro de Programación CRM (semana o comentario)
 
   const setCollapsed = (v) => { setCollapsedState(v); savePrefs({ collapsed: v }); };
 
@@ -60,6 +62,25 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
   const openTask = useCallback((id) => { setModalTaskId(id); setCreatingNew(false); }, []);
   const openNew = useCallback(() => { setCreatingNew(true); setModalTaskId(null); }, []);
   const closeModal = useCallback(() => { setModalTaskId(null); setCreatingNew(false); }, []);
+  /* Enlaces del módulo CRM: "crm/comentario/<id>" (campana) y "#/crm/semana/AAAA-MM-DD" o "#/crm/comentario/<id>" (barra de direcciones) */
+  const openCrmLink = useCallback((link) => {
+    const m = /^\/?crm\/(semana|comentario)\/([\w-]+)$/.exec(String(link || "").replace(/^#/, ""));
+    if (!m) return false;
+    setCrmLink(m[1] === "semana" ? { tipo: "semana", fecha: m[2] } : { tipo: "comentario", id: m[2] });
+    setView("crm");
+    setMobileOpen(false);
+    return true;
+  }, []);
+  useEffect(() => {
+    const fromHash = () => {
+      if (window.location.hash.startsWith("#/crm/") && openCrmLink(window.location.hash)) {
+        try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) { /* sin historial: el enlace queda en la barra */ }
+      }
+    };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    return () => window.removeEventListener("hashchange", fromHash);
+  }, [openCrmLink]);
   const goFiltered = (partial) => { setFilters({ ...defaultFilters, ...partial }); setView("all"); };
 
   const saveTask = (payload) => {
@@ -84,13 +105,13 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
       const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((p) => !p); return; }
       if (typing) return;
-      if (e.key === "c" && !modalTaskId && !creatingNew && !teamEditOpen && !passwordOpen) openNew();
+      if (e.key === "c" && view !== "crm" && !modalTaskId && !creatingNew && !teamEditOpen && !passwordOpen) openNew();
       if (e.key === "/") { e.preventDefault(); document.getElementById("global-search")?.focus(); }
       if (e.key === "Escape") setPaletteOpen(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [modalTaskId, creatingNew, teamEditOpen, passwordOpen, openNew]);
+  }, [view, modalTaskId, creatingNew, teamEditOpen, passwordOpen, openNew]);
 
   const matchesFilters = useCallback((t) => {
     if (filters.assignees.length && !filters.assignees.includes(t.assignee) && !filters.assignees.some((a) => (t.additionalAssignees || []).includes(a))) return false;
@@ -139,7 +160,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
         <Sidebar view={view} setView={setView} kpis={kpis} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} collapsed={collapsed} setCollapsed={setCollapsed} currentUser={me} dark={dark} setDark={toggleDark} />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar viewLabel={viewLabel} onNew={openNew} live={rm.live} saving={rm.saving} onRefresh={rm.refresh} setMobileOpen={setMobileOpen} currentUser={me}
-            onPalette={() => setPaletteOpen(true)} notifications={notifications} onMarkRead={rm.markRead} onMarkAllRead={rm.markAllRead} openTask={openTask}
+            onPalette={() => setPaletteOpen(true)} notifications={notifications} onMarkRead={rm.markRead} onMarkAllRead={rm.markAllRead} openTask={openTask} onOpenLink={openCrmLink}
             onEditTeam={() => setTeamEditOpen(true)} onChangePassword={() => setPasswordOpen(true)} onSignOut={signOut} />
           <main className="flex-1 overflow-y-auto p-3 lg:p-4">
             {view === "kanban" && <KanbanView tasks={visibleTasks} filters={filters} setFilters={setFilters} projects={projects} openTask={openTask} onDrop={changeStatus} />}
@@ -149,6 +170,7 @@ function RoadmapApp({ session, signOut, dark, toggleDark }) {
             {view === "weekly" && <WeeklyReview tasks={tasks} openTask={openTask} />}
             {view === "roadmap" && <RoadmapView tasks={tasks} openTask={openTask} />}
             {view === "dashboard" && <Dashboard tasks={tasks} kpis={kpis} openTask={openTask} goFiltered={goFiltered} />}
+            {view === "crm" && <CrmView session={session} me={me} users={users} nameOf={rm.nameOf} showToast={rm.showToast} dark={dark} deepLink={crmLink} clearDeepLink={() => setCrmLink(null)} />}
           </main>
         </div>
 
